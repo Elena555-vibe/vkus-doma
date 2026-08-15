@@ -48,8 +48,19 @@ function body(): array {
 
 function token(): string { return bin2hex(random_bytes(32)); }
 
+function authorizationHeader(): string {
+    $header = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+    if ($header !== '') return $header;
+    if (function_exists('getallheaders')) {
+        foreach (getallheaders() as $name => $value) {
+            if (strcasecmp($name, 'Authorization') === 0) return (string)$value;
+        }
+    }
+    return '';
+}
+
 function currentUser(PDO $db): ?array {
-    $header = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+    $header = authorizationHeader();
     if (!preg_match('/^Bearer\s+(.+)$/i', $header, $matches)) return null;
     $hash = hash('sha256', $matches[1]);
     $query = $db->prepare('SELECT u.id, u.email, u.name, u.is_admin FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>UTC_TIMESTAMP() LIMIT 1');
@@ -199,7 +210,7 @@ if ($action === 'auth.profile' && $method === 'PUT') {
 }
 
 if ($action === 'auth.logout' && $method === 'POST') {
-    $header = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+    $header = authorizationHeader();
     if (preg_match('/^Bearer\s+(.+)$/i', $header, $matches)) { $remove = $db->prepare('DELETE FROM sessions WHERE token_hash=?'); $remove->execute([hash('sha256', $matches[1])]); }
     reply(['ok' => true]);
 }
