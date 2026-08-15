@@ -1,3 +1,7 @@
 node_modules/
 dist/
 .pnpm-store/
+server/api/config.php
+server/uploads/
+.deploy-vkus-doma*.zip
+.publish-vkus-doma/
