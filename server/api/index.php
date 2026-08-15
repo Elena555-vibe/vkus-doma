@@ -52,7 +52,7 @@ function currentUser(PDO $db): ?array {
     $header = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
     if (!preg_match('/^Bearer\s+(.+)$/i', $header, $matches)) return null;
     $hash = hash('sha256', $matches[1]);
-    $query = $db->prepare('SELECT u.id, u.email, u.is_admin FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>UTC_TIMESTAMP() LIMIT 1');
+    $query = $db->prepare('SELECT u.id, u.email, u.name, u.is_admin FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>UTC_TIMESTAMP() LIMIT 1');
     $query->execute([$hash]);
     return $query->fetch() ?: null;
 }
@@ -172,21 +172,30 @@ if ($action === 'auth.register' && $method === 'POST') {
     if (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($password) < 10) reply(['error' => 'Укажите email и пароль не короче 10 символов.'], 422);
     $check = $db->prepare('SELECT id FROM users WHERE email=?'); $check->execute([$email]);
     if ($check->fetch()) reply(['error' => 'Этот email уже зарегистрирован. Войдите в книгу.'], 409);
-    $user = ['id' => uuid(), 'email' => $email, 'is_admin' => mb_strtolower($config['admin_email'] ?? '') === $email ? 1 : 0];
-    $add = $db->prepare('INSERT INTO users (id,email,password_hash,is_admin) VALUES (?,?,?,?)');
-    $add->execute([$user['id'], $email, password_hash($password, PASSWORD_DEFAULT), $user['is_admin']]);
-    reply(['token' => issueSession($db, $user), 'user' => ['email' => $email, 'isAdmin' => (bool)$user['is_admin']]], 201);
+    $name = trim((string)($input['name'] ?? ''));
+    if (mb_strlen($name) < 2 || mb_strlen($name) > 80) reply(['error' => 'Укажите имя от 2 до 80 символов.'], 422);
+    $user = ['id' => uuid(), 'email' => $email, 'name' => $name, 'is_admin' => mb_strtolower($config['admin_email'] ?? '') === $email ? 1 : 0];
+    $add = $db->prepare('INSERT INTO users (id,email,name,password_hash,is_admin) VALUES (?,?,?,?,?)');
+    $add->execute([$user['id'], $email, $user['name'], password_hash($password, PASSWORD_DEFAULT), $user['is_admin']]);
+    reply(['token' => issueSession($db, $user), 'user' => ['id' => $user['id'], 'email' => $email, 'name' => $name, 'isAdmin' => (bool)$user['is_admin']]], 201);
 }
 
 if ($action === 'auth.login' && $method === 'POST') {
     $input = body(); $email = mb_strtolower(trim((string)($input['email'] ?? '')));
-    $query = $db->prepare('SELECT id,email,password_hash,is_admin FROM users WHERE email=? LIMIT 1'); $query->execute([$email]); $user = $query->fetch();
+    $query = $db->prepare('SELECT id,email,name,password_hash,is_admin FROM users WHERE email=? LIMIT 1'); $query->execute([$email]); $user = $query->fetch();
     if (!$user || !password_verify((string)($input['password'] ?? ''), $user['password_hash'])) reply(['error' => 'Неверный email или пароль.'], 401);
-    reply(['token' => issueSession($db, $user), 'user' => ['email' => $user['email'], 'isAdmin' => (bool)$user['is_admin']]]);
+    reply(['token' => issueSession($db, $user), 'user' => ['id' => $user['id'], 'email' => $user['email'], 'name' => $user['name'], 'isAdmin' => (bool)$user['is_admin']]]);
 }
 
 if ($action === 'auth.me') {
-    $user = requireUser($db); reply(['user' => ['id' => $user['id'], 'email' => $user['email'], 'isAdmin' => (bool)$user['is_admin']]]);
+    $user = requireUser($db); reply(['user' => ['id' => $user['id'], 'email' => $user['email'], 'name' => $user['name'], 'isAdmin' => (bool)$user['is_admin']]]);
+}
+
+if ($action === 'auth.profile' && $method === 'PUT') {
+    $user = requireUser($db); $name = trim((string)(body()['name'] ?? ''));
+    if (mb_strlen($name) < 2 || mb_strlen($name) > 80) reply(['error' => 'Укажите имя от 2 до 80 символов.'], 422);
+    $query = $db->prepare('UPDATE users SET name=? WHERE id=?'); $query->execute([$name, $user['id']]);
+    reply(['user' => ['id' => $user['id'], 'email' => $user['email'], 'name' => $name, 'isAdmin' => (bool)$user['is_admin']]]);
 }
 
 if ($action === 'auth.logout' && $method === 'POST') {

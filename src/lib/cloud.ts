@@ -4,7 +4,7 @@ const tokenKey = 'vkus-doma-cloud-token';
 // Один API используется и на Timeweb, и в ранее установленной версии GitHub Pages.
 const apiUrl = import.meta.env.VITE_API_URL || 'https://ck663923.tw1.ru/vkus-doma/api/index.php';
 
-export type CloudUser = { id:string; email:string; isAdmin:boolean };
+export type CloudUser = { id:string; email:string; name:string | null; isAdmin:boolean };
 export type CloudState = { recipes:Recipe[]; favorites:string[]; notes:Record<string,string> };
 
 let sessionToken = localStorage.getItem(tokenKey) || '';
@@ -23,9 +23,10 @@ export const cloud={
   hasSession:()=>Boolean(sessionToken),
   clear:()=>{sessionToken='';localStorage.removeItem(tokenKey)},
   me:async()=> (await request<{user:CloudUser}>('auth.me')).user,
-  register:async(email:string,password:string)=>{const data=await request<{token:string,user:CloudUser}>('auth.register',{method:'POST',body:JSON.stringify({email,password})});sessionToken=data.token;localStorage.setItem(tokenKey,data.token);return data.user},
+  register:async(email:string,password:string,name:string)=>{const data=await request<{token:string,user:CloudUser}>('auth.register',{method:'POST',body:JSON.stringify({email,password,name})});sessionToken=data.token;localStorage.setItem(tokenKey,data.token);return data.user},
   login:async(email:string,password:string)=>{const data=await request<{token:string,user:CloudUser}>('auth.login',{method:'POST',body:JSON.stringify({email,password})});sessionToken=data.token;localStorage.setItem(tokenKey,data.token);return data.user},
   logout:async()=>{try{await request('auth.logout',{method:'POST'})}finally{cloud.clear()}},
+  updateProfile:async(name:string)=> (await request<{user:CloudUser}>('auth.profile',{method:'PUT',body:JSON.stringify({name})})).user,
   requestPasswordReset:async(email:string)=>request('auth.password-reset.request',{method:'POST',body:JSON.stringify({email})}),
   resetPassword:async(token:string,password:string)=>request('auth.password-reset.confirm',{method:'POST',body:JSON.stringify({token,password})}),
   load:async():Promise<CloudState>=>{const [recipes,favorites,notes]=await Promise.all([request<{recipes:Recipe[]}>('recipes.list'),request<{favorites:string[]}>('favorites.list'),request<{notes:Record<string,string>}>('notes.list')]);return {recipes:recipes.recipes,favorites:favorites.favorites,notes:notes.notes}},
