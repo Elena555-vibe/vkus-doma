@@ -1,7 +1,8 @@
 import type { Recipe } from '../data/types';
 
 const tokenKey = 'vkus-doma-cloud-token';
-const apiUrl = `${import.meta.env.VITE_API_URL || import.meta.env.BASE_URL}api/index.php`;
+// Один API используется и на Timeweb, и в ранее установленной версии GitHub Pages.
+const apiUrl = import.meta.env.VITE_API_URL || 'https://ck663923.tw1.ru/vkus-doma/api/index.php';
 
 export type CloudUser = { id:string; email:string; isAdmin:boolean };
 export type CloudState = { recipes:Recipe[]; favorites:string[]; notes:Record<string,string> };
