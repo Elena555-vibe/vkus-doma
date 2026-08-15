@@ -26,6 +26,8 @@ export const cloud={
   register:async(email:string,password:string)=>{const data=await request<{token:string,user:CloudUser}>('auth.register',{method:'POST',body:JSON.stringify({email,password})});sessionToken=data.token;localStorage.setItem(tokenKey,data.token);return data.user},
   login:async(email:string,password:string)=>{const data=await request<{token:string,user:CloudUser}>('auth.login',{method:'POST',body:JSON.stringify({email,password})});sessionToken=data.token;localStorage.setItem(tokenKey,data.token);return data.user},
   logout:async()=>{try{await request('auth.logout',{method:'POST'})}finally{cloud.clear()}},
+  requestPasswordReset:async(email:string)=>request('auth.password-reset.request',{method:'POST',body:JSON.stringify({email})}),
+  resetPassword:async(token:string,password:string)=>request('auth.password-reset.confirm',{method:'POST',body:JSON.stringify({token,password})}),
   load:async():Promise<CloudState>=>{const [recipes,favorites,notes]=await Promise.all([request<{recipes:Recipe[]}>('recipes.list'),request<{favorites:string[]}>('favorites.list'),request<{notes:Record<string,string>}>('notes.list')]);return {recipes:recipes.recipes,favorites:favorites.favorites,notes:notes.notes}},
   loadPublic:async():Promise<Recipe[]>=> (await request<{recipes:Recipe[]}>('recipes.public')).recipes,
   createRecipe:async(recipe:Recipe)=>request<{recipe:Recipe}>('recipes.create',{method:'POST',body:JSON.stringify(recipe)}),

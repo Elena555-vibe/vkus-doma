@@ -70,6 +70,29 @@ function issueSession(PDO $db, array $user): string {
     return $plain;
 }
 
+function resetLink(array $config, string $plainToken): string {
+    $url = rtrim((string)($config['app_url'] ?? ''), '/');
+    if ($url === '') reply(['error' => 'Восстановление пароля ещё настраивается.'], 503);
+    return $url . '/#/reset-password?token=' . rawurlencode($plainToken);
+}
+
+function sendResetEmail(array $config, string $recipient, string $link): void {
+    $from = trim((string)($config['mail_from'] ?? ''));
+    if (!filter_var($from, FILTER_VALIDATE_EMAIL)) reply(['error' => 'Восстановление пароля ещё настраивается.'], 503);
+    $name = trim((string)($config['mail_from_name'] ?? 'Вкус дома'));
+    $subject = 'Восстановление пароля — Вкус дома';
+    $message = "Здравствуйте!\n\nЧтобы задать новый пароль для личной книги «Вкус дома», откройте ссылку:\n{$link}\n\nСсылка действует 30 минут и используется один раз. Если это были не вы, просто проигнорируйте письмо.";
+    $headers = [
+        'From: ' . '=?UTF-8?B?' . base64_encode($name) . '?= <' . $from . '>',
+        'MIME-Version: 1.0',
+        'Content-Type: text/plain; charset=UTF-8',
+    ];
+    if (!mail($recipient, '=?UTF-8?B?' . base64_encode($subject) . '?=', $message, implode("\r\n", $headers))) {
+        error_log('Password reset email could not be sent.');
+        reply(['error' => 'Не удалось отправить письмо. Попробуйте позже.'], 503);
+    }
+}
+
 function jsonValue(mixed $value, string $fallback = '[]'): string {
     if (is_string($value)) return $value;
     return json_encode($value ?? json_decode($fallback, true), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
@@ -169,6 +192,38 @@ if ($action === 'auth.me') {
 if ($action === 'auth.logout' && $method === 'POST') {
     $header = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
     if (preg_match('/^Bearer\s+(.+)$/i', $header, $matches)) { $remove = $db->prepare('DELETE FROM sessions WHERE token_hash=?'); $remove->execute([hash('sha256', $matches[1])]); }
+    reply(['ok' => true]);
+}
+
+if ($action === 'auth.password-reset.request' && $method === 'POST') {
+    $email = mb_strtolower(trim((string)(body()['email'] ?? '')));
+    // Возвращаем одинаковый ответ: адреса зарегистрированных пользователей не раскрываются.
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) reply(['ok' => true], 202);
+    $query = $db->prepare('SELECT id,email FROM users WHERE email=? LIMIT 1');
+    $query->execute([$email]); $user = $query->fetch();
+    if (!$user) reply(['ok' => true], 202);
+    $remove = $db->prepare('DELETE FROM password_reset_tokens WHERE user_id=? OR expires_at < UTC_TIMESTAMP()');
+    $remove->execute([$user['id']]);
+    $plain = token();
+    $add = $db->prepare('INSERT INTO password_reset_tokens (id,user_id,token_hash,expires_at) VALUES (?,?,?,DATE_ADD(UTC_TIMESTAMP(), INTERVAL 30 MINUTE))');
+    $add->execute([uuid(), $user['id'], hash('sha256', $plain)]);
+    sendResetEmail($config, $user['email'], resetLink($config, $plain));
+    reply(['ok' => true], 202);
+}
+
+if ($action === 'auth.password-reset.confirm' && $method === 'POST') {
+    $input = body(); $plain = (string)($input['token'] ?? ''); $password = (string)($input['password'] ?? '');
+    if (mb_strlen($password) < 10 || !preg_match('/^[a-f0-9]{64}$/', $plain)) reply(['error' => 'Ссылка недействительна или пароль слишком короткий.'], 422);
+    $query = $db->prepare('SELECT id,user_id FROM password_reset_tokens WHERE token_hash=? AND used_at IS NULL AND expires_at>UTC_TIMESTAMP() LIMIT 1');
+    $query->execute([hash('sha256', $plain)]); $reset = $query->fetch();
+    if (!$reset) reply(['error' => 'Ссылка недействительна или уже истекла.'], 422);
+    $db->beginTransaction();
+    try {
+        $update = $db->prepare('UPDATE users SET password_hash=? WHERE id=?'); $update->execute([password_hash($password, PASSWORD_DEFAULT), $reset['user_id']]);
+        $used = $db->prepare('UPDATE password_reset_tokens SET used_at=UTC_TIMESTAMP() WHERE id=?'); $used->execute([$reset['id']]);
+        $sessions = $db->prepare('DELETE FROM sessions WHERE user_id=?'); $sessions->execute([$reset['user_id']]);
+        $db->commit();
+    } catch (Throwable $error) { $db->rollBack(); throw $error; }
     reply(['ok' => true]);
 }
 
