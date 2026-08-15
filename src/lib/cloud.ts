@@ -10,10 +10,11 @@ export type CloudState = { recipes:Recipe[]; favorites:string[]; notes:Record<st
 let sessionToken = localStorage.getItem(tokenKey) || '';
 
 async function request<T>(action:string, options:RequestInit = {}):Promise<T>{
+  const [actionName, query = ''] = action.split('?');
   const headers = new Headers(options.headers);
   if (!(options.body instanceof FormData)) headers.set('Content-Type','application/json');
   if (sessionToken) headers.set('Authorization',`Bearer ${sessionToken}`);
-  const response = await fetch(`${apiUrl}?action=${encodeURIComponent(action)}`,{...options,headers});
+  const response = await fetch(`${apiUrl}?action=${encodeURIComponent(actionName)}${query ? `&${query}` : ''}`,{...options,headers});
   const data = await response.json().catch(()=>({error:'Сервер вернул некорректный ответ.'}));
   if (!response.ok) throw new Error(data.error || 'Не удалось выполнить запрос.');
   return data as T;
@@ -32,8 +33,8 @@ export const cloud={
   load:async():Promise<CloudState>=>{const [recipes,favorites,notes]=await Promise.all([request<{recipes:Recipe[]}>('recipes.list'),request<{favorites:string[]}>('favorites.list'),request<{notes:Record<string,string>}>('notes.list')]);return {recipes:recipes.recipes,favorites:favorites.favorites,notes:notes.notes}},
   loadPublic:async():Promise<Recipe[]>=> (await request<{recipes:Recipe[]}>('recipes.public')).recipes,
   createRecipe:async(recipe:Recipe)=>request<{recipe:Recipe}>('recipes.create',{method:'POST',body:JSON.stringify(recipe)}),
-  updateRecipe:async(recipe:Recipe)=>request<{recipe:Recipe}>('recipes.update&id='+encodeURIComponent(recipe.id),{method:'PUT',body:JSON.stringify(recipe)}),
-  deleteRecipe:async(id:string)=>request('recipes.delete&id='+encodeURIComponent(id),{method:'DELETE'}),
+  updateRecipe:async(recipe:Recipe)=>request<{recipe:Recipe}>('recipes.update?id='+encodeURIComponent(recipe.id),{method:'PUT',body:JSON.stringify(recipe)}),
+  deleteRecipe:async(id:string)=>request('recipes.delete?id='+encodeURIComponent(id),{method:'DELETE'}),
   toggleFavorite:async(recipeId:string)=>request<{isFavorite:boolean}>('favorites.toggle',{method:'POST',body:JSON.stringify({recipeId})}),
   saveNote:async(recipeId:string,note:string)=>request('notes.save',{method:'POST',body:JSON.stringify({recipeId,note})}),
   uploadImage:async(file:File)=>{const form=new FormData();form.append('image',file);return request<{path:string}>('uploads.image',{method:'POST',body:form})},
