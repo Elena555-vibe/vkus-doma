@@ -21,7 +21,7 @@ export default defineConfig({
         theme_color: '#A995C2',
         icons: [{ src: 'icons/vkus-doma-logo-v1.png', sizes: '1024x1024', type: 'image/png', purpose: 'any maskable' }],
       },
-      workbox: { navigateFallback: '/vkus-doma/index.html', globPatterns: ['**/*.{js,css,html,svg,png}'], maximumFileSizeToCacheInBytes: 4 * 1024 * 1024 },
+      workbox: { navigateFallback: '/vkus-doma/index.html', globPatterns: ['**/*.{js,css,html,svg,png}'], maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, skipWaiting: true, clientsClaim: true, cleanupOutdatedCaches: true },
     }),
   ],
 });
