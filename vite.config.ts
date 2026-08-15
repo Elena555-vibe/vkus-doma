@@ -8,7 +8,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icons/app-icon.svg'],
+      includeAssets: ['icons/teapot-lavender-v2.png'],
       manifest: {
         name: 'Вкус дома — кулинарная книга',
         short_name: 'Вкус дома',
@@ -19,7 +19,7 @@ export default defineConfig({
         display: 'standalone',
         background_color: '#FAF7F1',
         theme_color: '#A995C2',
-        icons: [{ src: 'icons/app-icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
+        icons: [{ src: 'icons/teapot-lavender-v2.png', sizes: '1024x1024', type: 'image/png', purpose: 'any maskable' }],
       },
       workbox: { navigateFallback: '/vkus-doma/index.html', globPatterns: ['**/*.{js,css,html,svg,png}'], maximumFileSizeToCacheInBytes: 4 * 1024 * 1024 },
     }),
