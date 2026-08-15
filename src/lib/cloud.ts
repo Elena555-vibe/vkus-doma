@@ -37,5 +37,7 @@ export const cloud={
   toggleFavorite:async(recipeId:string)=>request<{isFavorite:boolean}>('favorites.toggle',{method:'POST',body:JSON.stringify({recipeId})}),
   saveNote:async(recipeId:string,note:string)=>request('notes.save',{method:'POST',body:JSON.stringify({recipeId,note})}),
   uploadImage:async(file:File)=>{const form=new FormData();form.append('image',file);return request<{path:string}>('uploads.image',{method:'POST',body:form})},
-  imageUrl:(path:string)=>path.startsWith('http')||path.startsWith('data:')?path:`${import.meta.env.BASE_URL}${path.replace(/^\//,'')}`,
+  // Uploads live on the Timeweb server, not on GitHub Pages.  An absolute URL
+  // keeps photos available from the installed PWA and from shared recipe links.
+  imageUrl:(path:string)=>path.startsWith('http')||path.startsWith('data:')?path:`https://ck663923.tw1.ru/vkus-doma/${path.replace(/^\//,'')}`,
 };
