@@ -44,6 +44,7 @@ type Toast = (message: string) => void;
 function App() {
   const [state, setState] = useState(repo.load());
   const [user, setUser] = useState<CloudUser | null>(null);
+  const [cloudLoading, setCloudLoading] = useState(true);
   const [toast, setToast] = useState('');
   const refresh = () => setState(repo.load());
   const say: Toast = message => { setToast(message); window.setTimeout(() => setToast(''), 2600); };
@@ -54,11 +55,11 @@ function App() {
     repo.replaceCloud({ recipes: [...personal, ...remote.recipes.filter(recipe => !personal.some(localRecipe => localRecipe.id === recipe.id))], favorites: remote.favorites, notes: remote.notes });
     refresh();
   };
-  useEffect(() => { void (async () => { try { if (cloud.hasSession()) setUser(await cloud.me()); await loadCloud(); } catch { cloud.clear(); } })(); }, []);
+  useEffect(() => { void (async () => { try { if (cloud.hasSession()) setUser(await cloud.me()); await loadCloud(); } catch { cloud.clear(); } finally { setCloudLoading(false); } })(); }, []);
   return <><Routes>
     <Route path="/" element={<Home user={user} />} />
     <Route path="/recipes" element={<Catalog state={state} />} />
-    <Route path="/recipes/:id" element={<Detail state={state} refresh={refresh} say={say} />} />
+    <Route path="/recipes/:id" element={<Detail state={state} refresh={refresh} say={say} loading={cloudLoading} />} />
     <Route path="/my-recipes/new" element={<Form refresh={refresh} say={say} user={user} />} />
     <Route path="/my-recipes/:id/edit" element={<Form state={state} refresh={refresh} say={say} user={user} />} />
     <Route path="/profile" element={<Profile state={state} refresh={refresh} say={say} user={user} setUser={setUser} loadCloud={loadCloud} />} />
@@ -69,14 +70,14 @@ function App() {
 
 function Logo({ small = false }: { small?: boolean }) { return <img className={small ? 'brand-logo small' : 'brand-logo'} src="/vkus-doma/icons/vkus-doma-logo-transparent-v2.png" alt="" />; }
 function Layout({ children, title }: { children: React.ReactNode; title?: string }) { return <main className="app">{title && <header className="brand-head"><div className="brand-mark"><div className="brand-art"><Logo /></div><p className="brand-kicker">Домашняя кулинарная книга</p><h1 className="brand-title">{title}</h1></div></header>}{children}</main>; }
-function Image({ recipe, hero = false }: { recipe: Recipe; hero?: boolean }) { return recipe.image ? <img src={cloud.imageUrl(recipe.image)} alt={recipe.title} loading={hero ? 'eager' : 'lazy'} /> : <div className="placeholder" aria-label={'Логотип для ' + recipe.title}><img className="placeholder-logo" src="/vkus-doma/icons/vkus-doma-logo-centered-v5.png" alt="" /></div>; }
+function Image({ recipe, hero = false }: { recipe: Recipe; hero?: boolean }) { const [failed, setFailed] = useState(false); return recipe.image && !failed ? <img src={cloud.imageUrl(recipe.image)} alt="" loading={hero ? 'eager' : 'lazy'} onError={() => setFailed(true)} /> : <div className="placeholder" aria-label={'Логотип для ' + recipe.title}><img className="placeholder-logo" src="/vkus-doma/icons/vkus-doma-logo-centered-v5.png" alt="" /></div>; }
 function CategoryIcon({ category }: { category: Category }) { const icons: Record<Category, typeof Coffee> = { Завтраки: Coffee, Закуски: Sandwich, Супы: Soup, Салаты: Salad, Горячее: CookingPot, Гарниры: Utensils, Соусы: Archive, Выпечка: Croissant, Десерты: IceCreamBowl, Напитки: GlassWater, Заготовки: Archive, Полуфабрикаты: PackageOpen }; const Icon = icons[category]; return <Icon size={25} strokeWidth={1.45} aria-hidden="true" />; }
 function Home({ user }: { user: CloudUser | null }) { const hour = new Date().getHours(); const greeting = hour < 12 ? 'Доброе утро' : hour < 18 ? 'Добрый день' : 'Добрый вечер'; return <Layout><header className="brand-head"><div className="brand-mark"><div className="brand-art"><Logo /></div><p className="brand-kicker">Тёплые рецепты на каждый день</p><h1>Вкус дома</h1></div></header>{user?.name && <div className="home-welcome"><p>{greeting}, {user.name}</p><span>Что приготовим сегодня?</span></div>}<section className="section home-categories"><div className="home-section-head"><div><div className="eyebrow">выберите раздел</div><h2>Рецепты по категориям</h2></div></div><div className="category-grid">{categories.map(category => <Link className="tile" to={'/recipes?category=' + encodeURIComponent(category)} key={category}><CategoryIcon category={category} /><span>{category}</span></Link>)}</div></section></Layout>; }
 function Catalog({ state }: { state: State }) { const location = useLocation(); const category = new URLSearchParams(location.search).get('category'); const [query, setQuery] = useState(''); const [filter, setFilter] = useState(category || 'Все'); const filters = ['Все', 'Избранное', ...categories]; const list = useMemo(() => state.recipes.filter(recipe => (filter === 'Все' || (filter === 'Избранное' && state.favorites.includes(recipe.id)) || recipe.category === filter) && recipe.title.toLowerCase().includes(query.toLowerCase())), [state, filter, query]); return <Layout title="Рецепты"><input className="search" aria-label="Поиск рецептов" value={query} onChange={event => setQuery(event.target.value)} placeholder="⌕  Поиск рецептов" /><div className="chips" aria-label="Фильтр рецептов">{filters.map(item => <button className={'chip ' + (filter === item ? 'active' : '')} onClick={() => setFilter(item)} key={item}>{item}</button>)}</div><div className="recipes section">{list.length ? list.map(recipe => <RecipeCard recipe={recipe} key={recipe.id} />) : <div className="panel empty"><h2>{query ? 'Ничего не найдено' : filter === 'Избранное' ? 'В избранном пока пусто' : 'Здесь будут ваши рецепты'}</h2><p>{query ? 'Попробуйте другое название.' : filter === 'Избранное' ? 'Откройте рецепт и нажмите «В избранное» — он появится здесь.' : 'Добавьте первый рецепт — он сразу появится в этом каталоге.'}</p></div>}</div><Link className="catalog-add primary" to="/my-recipes/new">+ Добавить рецепт</Link></Layout>; }
 function RecipeCard({ recipe }: { recipe: Recipe }) { return <Link to={'/recipes/' + recipe.id} className="recipe-card recipe-card-link"><Image recipe={recipe} /><div className="card-copy"><div className="eyebrow">{recipe.category}</div><h3>{recipe.title}</h3><div className="meta">◷ {recipe.time}</div></div></Link>; }
-function Detail({ state, refresh, say }: { state: State; refresh: () => void; say: Toast }) {
+function Detail({ state, refresh, say, loading }: { state: State; refresh: () => void; say: Toast; loading: boolean }) {
   const { id = '' } = useParams(); const navigate = useNavigate(); const recipe = state.recipes.find(item => item.id === id); const [servings, setServings] = useState(recipe?.servings || 1);
-  if (!recipe) return <NotFound />;
+  if (!recipe) return loading ? <Layout><div className="panel empty"><h2>Загружаем рецепт…</h2></div></Layout> : <NotFound />;
   const favorite = state.favorites.includes(id);
   const toggle = async () => { try { if (cloud.hasSession()) { const result = await cloud.toggleFavorite(id); const next = repo.load(); next.favorites = result.isFavorite ? [...new Set([...next.favorites, id])] : next.favorites.filter(item => item !== id); repo.save(next); } else { const next = repo.load(); next.favorites = favorite ? next.favorites.filter(item => item !== id) : [...next.favorites, id]; repo.save(next); } refresh(); say(favorite ? 'Удалено из избранного' : 'Добавлено в избранное'); } catch { say('Не удалось обновить избранное'); } };
   const share = async () => { try { if (navigator.share) await navigator.share({ title: recipe.title, text: `Рецепт «${recipe.title}»`, url: location.href }); else { await navigator.clipboard.writeText(location.href); say('Ссылка на рецепт скопирована'); } } catch { /* share cancelled */ } };
