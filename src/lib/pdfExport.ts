@@ -37,9 +37,16 @@ export async function exportRecipeBook(recipes: Recipe[], ownerName?: string | n
   groups.forEach(group => {
     content.push({ text: group.category, style: 'category', pageBreak: 'before' });
     group.recipes.forEach(recipe => {
-      const ingredients = recipe.ingredients
-        .filter(item => item.name.trim())
-        .map(item => `${item.name.trim()}${item.amount === '' ? '' : ` — ${item.amount}${item.unit ? ` ${item.unit}` : ''}`}`);
+      const ingredientGroups = Object.entries(recipe.ingredients.reduce<Record<string, Recipe['ingredients']>>((groups, item) => {
+        if (!item.name.trim()) return groups;
+        const section = item.section?.trim() || (recipe.category === 'Выпечка' ? 'Тесто' : '');
+        (groups[section] ||= []).push(item);
+        return groups;
+      }, {}));
+      const ingredientBlocks = ingredientGroups.flatMap(([section, items]) => [
+        ...(section ? [{ text: section, style: 'ingredientSection' }] : []),
+        { ul: items.map(item => `${item.name.trim()}${item.amount === '' ? '' : ` — ${item.amount}${item.unit ? ` ${item.unit}` : ''}`}`), style: 'ingredients' },
+      ]);
       const steps = recipe.steps
         .filter(step => step.text.trim())
         .map((step, index) => ({ text: `${index + 1}. ${step.text.trim()}${step.duration ? ` (${step.duration})` : ''}`, margin: [0, 0, 0, 6] }));
@@ -47,7 +54,7 @@ export async function exportRecipeBook(recipes: Recipe[], ownerName?: string | n
         { text: recipe.title, style: 'recipeTitle' },
         ...(recipe.author?.trim() ? [{ text: `Автор: ${recipe.author.trim()}`, style: 'author' }] : []),
         { text: [recipe.time, recipe.difficulty, `${recipe.servings} порц.`].filter(Boolean).join(' · '), style: 'meta' },
-        ...(ingredients.length ? [{ text: 'Ингредиенты', style: 'sectionTitle' }, { ul: ingredients, style: 'ingredients' }] : []),
+        ...(ingredientGroups.length ? [{ text: 'Ингредиенты', style: 'sectionTitle' }, ...ingredientBlocks] : []),
         ...(steps.length ? [{ text: 'Приготовление', style: 'sectionTitle' }, { stack: steps, style: 'steps' }] : []),
         ...(recipe.freezer?.prep?.trim() || recipe.freezer?.after?.trim()
           ? [{ text: [recipe.freezer?.prep?.trim() ? `Заморозка: ${recipe.freezer.prep.trim()}` : '', recipe.freezer?.after?.trim() ? `После разморозки: ${recipe.freezer.after.trim()}` : ''].filter(Boolean).join('\n'), style: 'freezer' }]
@@ -75,6 +82,7 @@ export async function exportRecipeBook(recipes: Recipe[], ownerName?: string | n
       author: { fontSize: 10, italics: true, color: '#7d7670', margin: [0, 0, 0, 4] },
       meta: { fontSize: 9, color: '#718561', margin: [0, 0, 0, 12] },
       sectionTitle: { fontSize: 13, bold: true, color: '#756181', margin: [0, 10, 0, 5] },
+      ingredientSection: { fontSize: 11, bold: true, color: '#604a6e', margin: [0, 7, 0, 3] },
       ingredients: { fontSize: 10, lineHeight: 1.35 },
       steps: { fontSize: 10, lineHeight: 1.25 },
       freezer: { fontSize: 9, color: '#604a6e', margin: [0, 10, 0, 0] },
