@@ -6,6 +6,7 @@ const apiUrl = import.meta.env.VITE_API_URL || 'https://ck663923.tw1.ru/vkus-dom
 
 export type CloudUser = { id:string; email:string; name:string | null; isAdmin:boolean };
 export type CloudState = { recipes:Recipe[]; favorites:string[]; notes:Record<string,string> };
+export class CloudError extends Error { constructor(message:string, public readonly status:number) { super(message); this.name='CloudError'; } }
 
 let sessionToken = localStorage.getItem(tokenKey) || '';
 
@@ -16,7 +17,7 @@ async function request<T>(action:string, options:RequestInit = {}):Promise<T>{
   if (sessionToken) headers.set('Authorization',`Bearer ${sessionToken}`);
   const response = await fetch(`${apiUrl}?action=${encodeURIComponent(actionName)}${query ? `&${query}` : ''}`,{...options,headers});
   const data = await response.json().catch(()=>({error:'Сервер вернул некорректный ответ.'}));
-  if (!response.ok) throw new Error(data.error || 'Не удалось выполнить запрос.');
+  if (!response.ok) throw new CloudError(data.error || 'Не удалось выполнить запрос.', response.status);
   return data as T;
 }
 
