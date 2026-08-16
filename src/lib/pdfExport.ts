@@ -29,26 +29,31 @@ export async function exportRecipeBook(recipes: Recipe[], ownerName?: string | n
     { text: 'Тёплые рецепты на каждый день', style: 'coverSubtitle' },
     { text: ownerName ? `Книга рецептов: ${ownerName}` : 'Моя кулинарная книга', style: 'coverOwner' },
     { text: `Составлено ${dateLabel()}`, style: 'coverDate' },
-    { text: 'Содержание', style: 'tocTitle', pageBreak: 'after' },
+    { text: '', pageBreak: 'after' },
+    { text: 'Содержание', style: 'tocTitle' },
     { ol: groups.map(group => `${group.category} — ${group.recipes.length}`), style: 'toc' },
   ];
 
-  groups.forEach((group, groupIndex) => {
+  groups.forEach(group => {
     content.push({ text: group.category, style: 'category', pageBreak: 'before' });
-    group.recipes.forEach((recipe, recipeIndex) => {
-      const ingredients = recipe.ingredients.map(item => `${item.name} — ${item.amount} ${item.unit}`.trim());
-      const steps = recipe.steps.map((step, index) => ({ text: `${index + 1}. ${step.text}${step.duration ? ` (${step.duration})` : ''}`, margin: [0, 0, 0, 6] }));
-      content.push(
-        { text: recipe.title, style: 'recipeTitle', pageBreak: recipeIndex === 0 && groupIndex > 0 ? undefined : undefined },
-        recipe.author ? { text: `Автор: ${recipe.author}`, style: 'author' } : {},
-        { text: `${recipe.time} · ${recipe.difficulty} · ${recipe.servings} порц.`, style: 'meta' },
-        { text: 'Ингредиенты', style: 'sectionTitle' },
-        { ul: ingredients, style: 'ingredients' },
-        { text: 'Приготовление', style: 'sectionTitle' },
-        { stack: steps, style: 'steps' },
-        recipe.freezer ? { text: `Заморозка: ${recipe.freezer.prep}\nПосле разморозки: ${recipe.freezer.after}`, style: 'freezer' } : {},
-        { text: '', margin: [0, 0, 0, 12] },
-      );
+    group.recipes.forEach(recipe => {
+      const ingredients = recipe.ingredients
+        .filter(item => item.name.trim())
+        .map(item => `${item.name.trim()}${item.amount === '' ? '' : ` — ${item.amount}${item.unit ? ` ${item.unit}` : ''}`}`);
+      const steps = recipe.steps
+        .filter(step => step.text.trim())
+        .map((step, index) => ({ text: `${index + 1}. ${step.text.trim()}${step.duration ? ` (${step.duration})` : ''}`, margin: [0, 0, 0, 6] }));
+      const block: unknown[] = [
+        { text: recipe.title, style: 'recipeTitle' },
+        ...(recipe.author?.trim() ? [{ text: `Автор: ${recipe.author.trim()}`, style: 'author' }] : []),
+        { text: [recipe.time, recipe.difficulty, `${recipe.servings} порц.`].filter(Boolean).join(' · '), style: 'meta' },
+        ...(ingredients.length ? [{ text: 'Ингредиенты', style: 'sectionTitle' }, { ul: ingredients, style: 'ingredients' }] : []),
+        ...(steps.length ? [{ text: 'Приготовление', style: 'sectionTitle' }, { stack: steps, style: 'steps' }] : []),
+        ...(recipe.freezer?.prep?.trim() || recipe.freezer?.after?.trim()
+          ? [{ text: [recipe.freezer?.prep?.trim() ? `Заморозка: ${recipe.freezer.prep.trim()}` : '', recipe.freezer?.after?.trim() ? `После разморозки: ${recipe.freezer.after.trim()}` : ''].filter(Boolean).join('\n'), style: 'freezer' }]
+          : []),
+      ];
+      content.push({ stack: block, margin: [0, 0, 0, 16] });
     });
   });
 
