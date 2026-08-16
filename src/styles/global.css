@@ -11,3 +11,29 @@
 .catalog-actions .primary{width:100%}.catalog-category{margin:5px 0 10px;color:var(--plum);font:500 22px 'Cormorant Garamond',Georgia,serif}.placeholder{background:rgba(255,252,248,.78);padding:12px}.placeholder-logo{display:block!important;width:78px!important;height:78px!important;object-fit:contain!important}.catalog-add{position:fixed;z-index:4;bottom:94px;left:50%;width:min(calc(100% - 32px),688px);transform:translateX(-50%);min-height:52px;box-shadow:0 8px 20px rgba(96,73,109,.2)}.form-photo-placeholder{min-height:210px;display:grid;place-items:center;align-content:center;gap:8px;border:1px dashed var(--border);border-radius:16px;background:rgba(255,252,248,.6);color:var(--ink-muted);font-size:12px;text-align:center}.form-photo-placeholder img{width:112px;height:112px;object-fit:contain}.form-photo-preview{display:block;width:100%;max-height:260px;border-radius:16px;object-fit:cover}.field-hint{margin:9px 0 0;color:var(--ink-muted);font-size:11px}.detail-hero-empty .placeholder{display:grid;height:180px;place-items:center;padding:12px}.detail-hero-empty .placeholder-logo{width:112px!important;height:112px!important}.row{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.row>*{min-width:0}.field span{display:flex;min-width:0}.field span input,.field span select{min-width:0!important}html,body{max-width:100%;overflow-x:hidden}
 .publish-toggle{display:flex;align-items:center;gap:9px;padding-top:13px;color:var(--plum);font-size:14px;font-weight:600}.publish-toggle input{width:18px;height:18px;accent-color:var(--lavender)}.auth-tabs{display:flex;gap:8px;justify-content:center;margin:19px 0 12px}.auth-tabs button{min-height:38px;padding:7px 12px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--ink-muted);font-size:12px}.auth-tabs button.active{border-color:var(--lavender);background:var(--lilac);color:var(--plum);font-weight:600}.profile .field{text-align:left}.profile .primary{margin-top:19px;width:100%}.pdf-export{margin-top:14px!important}.pdf-export-hint{margin:8px 0 0;color:var(--ink-muted);font-size:11px;line-height:1.35}.profile .eyebrow{margin-top:15px}.chip.active{border-color:#886b9a;background:linear-gradient(135deg,#795f90 0%,#b699c4 50%,#8ba184 100%);color:#fff;box-shadow:0 5px 14px rgba(91,72,88,.18)}.chip.active:hover{background:linear-gradient(135deg,#60456f 0%,#aa87b9 50%,#718b68 100%)}.primary{border-color:var(--lavender);background:var(--lavender);color:#fff;box-shadow:none}.primary:hover{background:var(--lavender)}.nav a.active{color:#7d6290}.nav a.active .nav-icon{color:#795f90}.nav a.active:after{background:linear-gradient(90deg,#795f90,#b699c4,#8ba184)}.auth-tabs button.active{border-color:#8c70a0;background:linear-gradient(135deg,#eee7f1,#f8eff5 55%,#eef3e9);color:#604a6e;box-shadow:0 3px 9px rgba(91,72,88,.12)}
 .home-welcome{width:min(100%,430px);margin:32px auto 0;padding-left:4px;color:var(--ink-muted)}.home-welcome p{margin:0;color:var(--plum);font:700 25px/1.1 'Cormorant Garamond',Georgia,serif}.home-welcome span{font-size:12px}.home-welcome+.home-categories{margin-top:32px}
+/* Mobile-safe layout: forms must never be wider than the visible screen. */
+html,body{width:100%;min-width:0;overflow-x:clip}
+body{overflow-wrap:break-word}
+img,svg,video,canvas{max-width:100%}
+.app,.app>*,.detail,.form,.panel,.field,.row,.ingredient-group,.ingredient-section,.actions{min-width:0;max-width:100%}
+.form{width:100%}
+.panel{overflow:hidden}
+.field,.field>*{min-width:0}
+.field input,.field select,.field textarea,.note{display:block;min-width:0;max-width:100%;font-size:16px}
+.field textarea,.note{resize:vertical;overflow-wrap:anywhere}
+.field span{width:100%;max-width:100%;overflow:hidden}
+.field span input,.field span select{flex:1 1 0;max-width:none}
+.row{width:100%}
+.actions>*{max-width:100%;white-space:normal;text-align:center}
+.primary,.secondary,.danger{min-width:0;white-space:normal;text-align:center}
+.form h2,.brand-title,.detail h1,.card-copy h3,.ingredient span,.step div{overflow-wrap:anywhere}
+@media(max-width:374px){
+  .app{padding-left:12px;padding-right:12px}
+  .brand-mark{grid-template-columns:112px minmax(0,1fr);gap:10px}
+  .brand-art{width:112px;height:112px}
+  .brand-art .brand-logo{width:164px;height:164px;transform:translate(-26px,-34px)}
+  .brand-mark h1.brand-title{font-size:clamp(31px,9.6vw,40px)}
+  .panel,.form .panel{padding:14px}
+  .row{grid-template-columns:1fr;gap:0}
+  .catalog-add{width:calc(100% - 24px)}
+}
