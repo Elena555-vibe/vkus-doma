@@ -53,7 +53,7 @@ export async function exportRecipeBook(recipes: Recipe[], ownerName?: string | n
       const block: unknown[] = [
         { text: recipe.title, style: 'recipeTitle' },
         ...(recipe.author?.trim() ? [{ text: `Автор: ${recipe.author.trim()}`, style: 'author' }] : []),
-        { text: [recipe.time, recipe.difficulty, `${recipe.servings} порц.`].filter(Boolean).join(' · '), style: 'meta' },
+        { text: [recipe.time, `${recipe.servings} порц.`].filter(Boolean).join(' · '), style: 'meta' },
         ...(ingredientGroups.length ? [{ text: 'Ингредиенты', style: 'sectionTitle' }, ...ingredientBlocks] : []),
         ...(steps.length ? [{ text: 'Приготовление', style: 'sectionTitle' }, { stack: steps, style: 'steps' }] : []),
         ...(recipe.freezer?.prep?.trim() || recipe.freezer?.after?.trim()
