@@ -264,6 +264,23 @@ if ($action === 'recipes.get') {
     reply(['recipe' => recipeFromRow($recipe)]);
 }
 
+if ($action === 'recipes.share' && $method === 'POST') {
+    $user = requireUser($db); $recipe = findRecipe($db, (string)(body()['recipeId'] ?? ''));
+    if (!$recipe || !canRead($recipe, $user)) reply(['error' => 'Рецепт не найден.'], 404);
+    $db->exec('CREATE TABLE IF NOT EXISTS recipe_share_links (token CHAR(64) PRIMARY KEY, recipe_id CHAR(36) NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX(recipe_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+    $lookup = $db->prepare('SELECT token FROM recipe_share_links WHERE recipe_id=? ORDER BY created_at DESC LIMIT 1'); $lookup->execute([$recipe['id']]); $token = $lookup->fetchColumn();
+    if (!$token) { $token = bin2hex(random_bytes(32)); $add = $db->prepare('INSERT INTO recipe_share_links (token,recipe_id) VALUES (?,?)'); $add->execute([$token, $recipe['id']]); }
+    reply(['token' => $token]);
+}
+
+if ($action === 'recipes.shared') {
+    $token = (string)($_GET['token'] ?? '');
+    if (!preg_match('/^[a-f0-9]{64}$/', $token)) reply(['error' => 'Рецепт не найден.'], 404);
+    $query = $db->prepare('SELECT r.* FROM recipe_share_links l JOIN recipes r ON r.id=l.recipe_id WHERE l.token=? LIMIT 1'); $query->execute([$token]); $recipe = $query->fetch();
+    if (!$recipe) reply(['error' => 'Рецепт не найден.'], 404);
+    reply(['recipe' => recipeFromRow($recipe)]);
+}
+
 if ($action === 'recipes.create' && $method === 'POST') {
     $user = requireUser($db); $input = body(); $fields = payloadToFields($input);
     $shared = ($input['source'] ?? 'personal') === 'shared' && (bool)$user['is_admin']; $id = uuid();
