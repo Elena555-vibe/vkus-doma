@@ -320,12 +320,13 @@ if ($action === 'favorites.toggle' && $method === 'POST') {
 if ($action === 'notes.save' && $method === 'POST') {
     $user = requireUser($db); $input = body(); $id = (string)($input['recipeId'] ?? ''); $recipe = findRecipe($db, $id);
     if (!$recipe || !canRead($recipe, $user)) reply(['error' => 'Рецепт не найден.'], 404);
+    $db->exec('CREATE TABLE IF NOT EXISTS recipe_notes (user_id CHAR(36) NOT NULL, recipe_id CHAR(36) NOT NULL, note TEXT NOT NULL, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY(user_id,recipe_id), FOREIGN KEY(recipe_id) REFERENCES recipes(id) ON DELETE CASCADE) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
     $note = trim((string)($input['note'] ?? ''));
     $query = $db->prepare('INSERT INTO recipe_notes (user_id,recipe_id,note) VALUES (?,?,?) ON DUPLICATE KEY UPDATE note=VALUES(note)'); $query->execute([$user['id'], $id, $note]); reply(['ok' => true]);
 }
 
 if ($action === 'notes.list') {
-    $user = requireUser($db); $query = $db->prepare('SELECT recipe_id,note FROM recipe_notes WHERE user_id=?'); $query->execute([$user['id']]); reply(['notes' => $query->fetchAll(PDO::FETCH_KEY_PAIR)]);
+    $user = requireUser($db); $db->exec('CREATE TABLE IF NOT EXISTS recipe_notes (user_id CHAR(36) NOT NULL, recipe_id CHAR(36) NOT NULL, note TEXT NOT NULL, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY(user_id,recipe_id), FOREIGN KEY(recipe_id) REFERENCES recipes(id) ON DELETE CASCADE) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'); $query = $db->prepare('SELECT recipe_id,note FROM recipe_notes WHERE user_id=?'); $query->execute([$user['id']]); reply(['notes' => $query->fetchAll(PDO::FETCH_KEY_PAIR)]);
 }
 
 if ($action === 'uploads.image' && $method === 'POST') {
