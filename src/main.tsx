@@ -59,6 +59,7 @@ function App() {
     refresh();
   };
   useEffect(() => { void (async () => {
+    setState(await repo.hydrate());
     if (cloud.hasSession()) {
       try { setUser(await cloud.me()); }
       catch (error) { if (error instanceof CloudError && error.status === 401) cloud.clear(); }
