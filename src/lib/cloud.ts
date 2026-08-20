@@ -39,6 +39,7 @@ export const cloud={
   createShareLink:async(recipeId:string)=>request<{token:string}>('recipes.share',{method:'POST',body:JSON.stringify({recipeId})}),
   deleteRecipe:async(id:string)=>request('recipes.delete?id='+encodeURIComponent(id),{method:'DELETE'}),
   toggleFavorite:async(recipeId:string)=>request<{isFavorite:boolean}>('favorites.toggle',{method:'POST',body:JSON.stringify({recipeId})}),
+  setFavorite:async(recipeId:string,isFavorite:boolean)=>request<{isFavorite:boolean}>('favorites.set',{method:'POST',body:JSON.stringify({recipeId,isFavorite})}),
   saveNote:async(recipeId:string,note:string)=>request('notes.save',{method:'POST',body:JSON.stringify({recipeId,note})}),
   uploadImage:async(file:File)=>{const form=new FormData();form.append('image',file);return request<{path:string}>('uploads.image',{method:'POST',body:form})},
   // Uploads live on the Timeweb server, not on GitHub Pages.  An absolute URL

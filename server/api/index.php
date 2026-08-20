@@ -283,7 +283,8 @@ if ($action === 'recipes.shared') {
 
 if ($action === 'recipes.create' && $method === 'POST') {
     $user = requireUser($db); $input = body(); $fields = payloadToFields($input);
-    $shared = ($input['source'] ?? 'personal') === 'shared' && (bool)$user['is_admin']; $id = uuid();
+    $shared = ($input['source'] ?? 'personal') === 'shared' && (bool)$user['is_admin']; $requestedId = (string)($input['id'] ?? ''); $id = preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i', $requestedId) ? $requestedId : uuid();
+    if (findRecipe($db, $id)) reply(['error' => 'Рецепт с таким идентификатором уже существует.'], 409);
     $query = $db->prepare('INSERT INTO recipes (id,owner_id,source,is_published,title,category,author,servings,cooking_time,difficulty,image_path,ingredients,steps,freezer) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
     $query->execute([$id, $user['id'], $shared ? 'shared' : 'personal', $shared ? 1 : 0, ...$fields]);
     reply(['recipe' => recipeFromRow(findRecipe($db, $id))], 201);
@@ -314,6 +315,15 @@ if ($action === 'favorites.toggle' && $method === 'POST') {
     $check = $db->prepare('SELECT 1 FROM favorites WHERE user_id=? AND recipe_id=?'); $check->execute([$user['id'], $id]);
     if ($check->fetch()) { $remove = $db->prepare('DELETE FROM favorites WHERE user_id=? AND recipe_id=?'); $remove->execute([$user['id'], $id]); $isFavorite = false; }
     else { $add = $db->prepare('INSERT INTO favorites (user_id,recipe_id) VALUES (?,?)'); $add->execute([$user['id'], $id]); $isFavorite = true; }
+    reply(['isFavorite' => $isFavorite]);
+}
+
+if ($action === 'favorites.set' && $method === 'POST') {
+    $user = requireUser($db); $input = body(); $id = (string)($input['recipeId'] ?? ''); $recipe = findRecipe($db, $id);
+    if (!$recipe || !canRead($recipe, $user)) reply(['error' => 'Рецепт не найден.'], 404);
+    $isFavorite = (bool)($input['isFavorite'] ?? false);
+    if ($isFavorite) { $add = $db->prepare('INSERT IGNORE INTO favorites (user_id,recipe_id) VALUES (?,?)'); $add->execute([$user['id'], $id]); }
+    else { $remove = $db->prepare('DELETE FROM favorites WHERE user_id=? AND recipe_id=?'); $remove->execute([$user['id'], $id]); }
     reply(['isFavorite' => $isFavorite]);
 }
 
