@@ -14,4 +14,7 @@ return [
     'mail_from' => 'no-reply@example.com',
     'mail_from_name' => 'Вкус дома',
     'uploads_dir' => __DIR__ . '/../uploads',
+    // Папка вне публичного сайта: ежедневные сжатые дампы MySQL из backup.php.
+    'backup_dir' => dirname(__DIR__, 3) . '/backups/vkus-doma',
+    'backup_retention_days' => 31,
 ];
