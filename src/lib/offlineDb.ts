@@ -5,6 +5,7 @@ export type PendingChange = { id?: number; type: 'recipe.create' | 'recipe.updat
 
 const databaseName = 'vkus-doma-offline';
 const version = 1;
+let stateWriteQueue = Promise.resolve();
 
 const open = (): Promise<IDBDatabase> => new Promise((resolve, reject) => {
   const request = indexedDB.open(databaseName, version);
@@ -34,12 +35,18 @@ export async function readOfflineState(): Promise<OfflineState | null> {
 }
 
 export async function writeOfflineState(state: OfflineState): Promise<void> {
-  const db = await open();
-  try {
-    const transaction = db.transaction('state', 'readwrite');
-    transaction.objectStore('state').put({ key: 'current', state, updatedAt: Date.now() });
-    await transactionDone(transaction);
-  } finally { db.close(); }
+  // IndexedDB writes are asynchronous. Serialising them prevents an older
+  // save from finishing after a newer one and overwriting the local book.
+  const snapshot = structuredClone(state);
+  stateWriteQueue = stateWriteQueue.catch(() => undefined).then(async () => {
+    const db = await open();
+    try {
+      const transaction = db.transaction('state', 'readwrite');
+      transaction.objectStore('state').put({ key: 'current', state: snapshot, updatedAt: Date.now() });
+      await transactionDone(transaction);
+    } finally { db.close(); }
+  });
+  return stateWriteQueue;
 }
 
 export async function addPendingChange(change: PendingChange): Promise<void> {

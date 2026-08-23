@@ -58,8 +58,32 @@ function App() {
   const loadCloud = async () => {
     const remote = cloud.hasSession() ? await cloud.load() : { recipes: await cloud.loadPublic(), favorites: repo.load().favorites, notes: repo.load().notes };
     const local = repo.load();
+    const pending = await repo.pending();
+    // A successful read must not replace a more recent local edit that is
+    // still waiting in the offline queue.
+    const editedIds = new Set(pending.filter(change => change.type === 'recipe.create' || change.type === 'recipe.update').map(change => (change.payload as Recipe).id));
+    const deletedIds = new Set(pending.filter(change => change.type === 'recipe.delete').map(change => (change.payload as { id: string }).id));
     const personal = cloud.hasSession() ? [] : local.recipes.filter(recipe => recipe.source === 'personal');
-    repo.replaceCloud({ recipes: [...personal, ...remote.recipes.filter(recipe => !personal.some(localRecipe => localRecipe.id === recipe.id))], favorites: remote.favorites, notes: remote.notes });
+    const recipes = [
+      ...personal,
+      ...local.recipes.filter(recipe => editedIds.has(recipe.id)),
+      ...remote.recipes.filter(recipe => !deletedIds.has(recipe.id) && !personal.some(localRecipe => localRecipe.id === recipe.id) && !editedIds.has(recipe.id)),
+    ];
+    const favorites = [...remote.favorites];
+    const notes = { ...remote.notes };
+    for (const change of pending) {
+      if (change.type === 'favorite.set') {
+        const payload = change.payload as { recipeId: string; isFavorite: boolean };
+        const index = favorites.indexOf(payload.recipeId);
+        if (payload.isFavorite && index === -1) favorites.push(payload.recipeId);
+        if (!payload.isFavorite && index !== -1) favorites.splice(index, 1);
+      }
+      if (change.type === 'note.save') {
+        const payload = change.payload as { recipeId: string; note: string };
+        notes[payload.recipeId] = payload.note;
+      }
+    }
+    repo.replaceCloud({ recipes, favorites, notes });
     refresh();
   };
   useEffect(() => { void (async () => {
@@ -145,8 +169,36 @@ function Form({ state, refresh, say, user }: { state?: State; refresh: () => voi
   const ingredientSection = (ingredient: Recipe['ingredients'][number]) => ingredient.section?.trim() || (recipe.category === 'Выпечка' ? 'Тесто' : 'Ингредиенты');
   const ingredientGroups = [...new Set(recipe.ingredients.map(ingredientSection))];
   const set = (patch: Partial<Recipe>) => setRecipe(current => ({ ...current, ...patch }));
-  const upload = async (file?: File) => { if (!file) return; try { const prepared = await preparePhoto(file); if (cloud.hasSession()) set({ image: (await cloud.uploadImage(prepared)).path }); else { const reader = new FileReader(); reader.onload = () => set({ image: String(reader.result) }); reader.readAsDataURL(prepared); } say('Фото добавлено'); } catch (error) { say(error instanceof Error ? error.message : 'Не удалось загрузить фото'); } };
-  const save = async () => { setSubmitted(true); if (!valid) { say('Укажите название рецепта'); return; } const cleaned = { ...recipe, source: user?.isAdmin ? 'shared' as const : recipe.source, time: recipe.time.trim() || 'Не указано', servings: recipe.servings > 0 ? recipe.servings : 1, ingredients: filledIngredients, steps: filledSteps }; const operation = existing ? 'recipe.update' as const : 'recipe.create' as const; const saveLocally = async (queued: boolean) => { repo.upsert(cleaned); if (queued) await repo.queue({ type: operation, payload: cleaned }); draftActive.current = false; localStorage.removeItem(draftKey); refresh(); say(queued ? 'Рецепт сохранён на устройстве и будет синхронизирован при подключении' : 'Рецепт сохранён на этом устройстве'); navigate('/recipes'); }; if (!cloud.hasSession()) { await saveLocally(false); return; } if (!navigator.onLine) { await saveLocally(true); return; } try { const result = await (existing ? cloud.updateRecipe(cleaned) : cloud.createRecipe(cleaned)); repo.upsert(result.recipe); draftActive.current = false; localStorage.removeItem(draftKey); refresh(); say(user?.isAdmin ? 'Рецепт опубликован в общей книге' : 'Рецепт сохранён в вашей книге'); navigate('/recipes'); } catch { await saveLocally(true); } };
+  const upload = async (file?: File) => {
+    if (!file) return;
+    try {
+      const prepared = await preparePhoto(file);
+      if (cloud.hasSession() && navigator.onLine) {
+        try {
+          set({ image: (await cloud.uploadImage(prepared)).path });
+          say('Фото добавлено');
+          return;
+        } catch { /* The compressed local copy is a safe offline fallback. */ }
+      }
+      const reader = new FileReader();
+      reader.onload = () => { set({ image: String(reader.result) }); say('Фото сохранено на устройстве и загрузится при подключении'); };
+      reader.readAsDataURL(prepared);
+    } catch (error) { say(error instanceof Error ? error.message : 'Не удалось подготовить фото'); }
+  };
+  const save = async () => {
+    setSubmitted(true);
+    if (!valid) { say('Укажите название рецепта'); return; }
+    let cleaned = { ...recipe, source: user?.isAdmin ? 'shared' as const : recipe.source, time: recipe.time.trim() || 'Не указано', servings: recipe.servings > 0 ? recipe.servings : 1, ingredients: filledIngredients, steps: filledSteps };
+    const operation = existing ? 'recipe.update' as const : 'recipe.create' as const;
+    const saveLocally = async (queued: boolean) => { repo.upsert(cleaned); if (queued) await repo.queue({ type: operation, payload: cleaned }); draftActive.current = false; localStorage.removeItem(draftKey); refresh(); say(queued ? 'Рецепт сохранён на устройстве и будет синхронизирован при подключении' : 'Рецепт сохранён на этом устройстве'); navigate('/recipes'); };
+    if (!cloud.hasSession()) { await saveLocally(false); return; }
+    if (!navigator.onLine) { await saveLocally(true); return; }
+    try {
+      if (cleaned.image?.startsWith('data:')) cleaned = { ...cleaned, image: (await cloud.uploadImage(await dataUrlFile(cleaned.image, 'recipe.jpg'))).path };
+      const result = await (existing ? cloud.updateRecipe(cleaned) : cloud.createRecipe(cleaned));
+      repo.upsert(result.recipe); draftActive.current = false; localStorage.removeItem(draftKey); refresh(); say(user?.isAdmin ? 'Рецепт опубликован в общей книге' : 'Рецепт сохранён в вашей книге'); navigate('/recipes');
+    } catch { await saveLocally(true); }
+  };
   return <Layout title={existing ? 'Изменить рецепт' : 'Новый рецепт'}><div className="form"><section className="panel"><h2>Основное</h2><Field label="Название *"><input value={recipe.title} onChange={event => set({ title: event.target.value })} placeholder="Например, бабушкины сырники" /></Field><div className="row"><Field label="Категория *"><select value={recipe.category} onChange={event => set({ category: event.target.value as Category })}>{categories.map(category => <option key={category}>{category}</option>)}</select></Field><Field label="Порции *"><input type="number" min="1" value={recipe.servings} onChange={event => set({ servings: +event.target.value })} /></Field></div><Field label="Общее время *"><input value={recipe.time} onChange={event => set({ time: event.target.value })} placeholder="30 мин" /></Field><Field label="Автор"><input value={recipe.author || ''} onChange={event => set({ author: event.target.value })} placeholder="Необязательно" /></Field>{user?.isAdmin && <p className="field-hint">Ваши рецепты автоматически появляются в общей книге у всех пользователей.</p>}</section><section className="panel"><h2>Главная фотография</h2>{recipe.image ? <img src={cloud.imageUrl(recipe.image)} alt="Предпросмотр" className="form-photo-preview" /> : <div className="form-photo-placeholder"><img src={appAsset('icons/vkus-doma-logo-centered-v5.png')} alt="Логотип Вкус дома" /><span>Здесь появится фотография блюда</span></div>}<div className="actions"><label className="secondary">Выбрать фото<input hidden type="file" accept="image/jpeg,image/png,image/webp" onChange={event => void upload(event.target.files?.[0])} /></label>{recipe.image && <button className="secondary" onClick={() => set({ image: undefined })}>Удалить фото</button>}</div><div className="eyebrow">Каждое фото автоматически сжимается до 960 px и примерно 550 КБ перед загрузкой.</div></section><section className="panel"><h2>Ингредиенты *</h2>{ingredientGroups.map(group => <div className="ingredient-group" key={group}>{(recipe.category === 'Выпечка' || group !== 'Ингредиенты') && <h3>{group}</h3>}{recipe.ingredients.filter(ingredient => ingredientSection(ingredient) === group).map((ingredient, index) => <div className="row" key={ingredient.id}><Field label={'Ингредиент ' + (index + 1)}><input list="ingredients" value={ingredient.name} onChange={event => set({ ingredients: recipe.ingredients.map(item => item.id === ingredient.id ? { ...item, name: event.target.value } : item) })} /></Field><Field label="Количество и единица"><span><input style={{ width: '45%' }} type="text" inputMode="decimal" value={String(ingredient.amount)} onChange={event => set({ ingredients: recipe.ingredients.map(item => item.id === ingredient.id ? { ...item, amount: event.target.value } : item) })} placeholder="0,5" /><select style={{ width: '55%' }} value={ingredient.unit} onChange={event => set({ ingredients: recipe.ingredients.map(item => item.id === ingredient.id ? { ...item, unit: event.target.value } : item) })}>{units.map(unit => <option key={unit}>{unit}</option>)}</select></span></Field></div>)}<button type="button" className="secondary compact" onClick={() => set({ ingredients: [...recipe.ingredients, { id: uid(), name: '', amount: '', unit: 'г', section: group === 'Ингредиенты' ? undefined : group }] })}>+ Добавить ингредиент</button></div>)}<datalist id="ingredients">{ingredientHints.map(item => <option key={item} value={item} />)}</datalist>{recipe.category === 'Выпечка' && !ingredientGroups.includes('Начинка') && <button type="button" className="secondary" onClick={() => set({ ingredients: [...recipe.ingredients, { id: uid(), name: '', amount: '', unit: 'г', section: 'Начинка' }] })}>+ Добавить начинку</button>}<p className="field-hint">Для выпечки ингредиенты автоматически разделяются на «Тесто» и «Начинка». Можно писать: 0,5 · 1/2 · ½</p></section><section className="panel"><h2>Шаги приготовления *</h2>{recipe.steps.map((step, index) => <Field key={step.id} label={'Шаг ' + (index + 1)}><textarea value={step.text} onChange={event => set({ steps: recipe.steps.map(item => item.id === step.id ? { ...item, text: event.target.value } : item) })} /></Field>)}<button className="secondary" onClick={() => set({ steps: [...recipe.steps, { id: uid(), text: '' }] })}>+ Добавить шаг</button></section>{recipe.category === 'Полуфабрикаты' && <section className="panel"><h2>Заморозка *</h2><Field label="Подготовка и заморозка"><textarea value={recipe.freezer?.prep || ''} onChange={event => set({ freezer: { prep: event.target.value, after: recipe.freezer?.after || '', storage: recipe.freezer?.storage || '', conditions: recipe.freezer?.conditions || '' } })} /></Field><Field label="После разморозки"><textarea value={recipe.freezer?.after || ''} onChange={event => set({ freezer: { prep: recipe.freezer?.prep || '', after: event.target.value, storage: recipe.freezer?.storage || '', conditions: recipe.freezer?.conditions || '' } })} /></Field></section>}<div className="actions"><button className="primary" onClick={() => void save()}>Сохранить рецепт</button><button className="secondary" onClick={() => navigate(-1)}>Отмена</button></div>{submitted && !valid && <p style={{ color: 'var(--danger)' }}>Заполните название, время, количество каждого ингредиента и хотя бы один шаг.</p>}</div></Layout>;
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div className="field"><label>{label}</label>{children}</div>; }
