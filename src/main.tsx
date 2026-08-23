@@ -10,6 +10,7 @@ import { repo } from './lib/store';
 import { syncPendingChanges } from './lib/sync';
 import { exportRecipeBook } from './lib/pdfExport';
 import { servingsLabel } from './lib/russian';
+import { downloadBookBackup, parseBookBackup } from './lib/bookBackup';
 
 const uid = () => crypto.randomUUID();
 const parseAmount = (value: number | string) => {
@@ -204,14 +205,49 @@ function Form({ state, refresh, say, user }: { state?: State; refresh: () => voi
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div className="field"><label>{label}</label>{children}</div>; }
 async function dataUrlFile(dataUrl: string, name: string) { const blob = await fetch(dataUrl).then(response => response.blob()); return new File([blob], name, { type: blob.type || 'image/jpeg' }); }
 function Profile({ state, refresh, say, user, setUser, loadCloud }: { state: State; refresh: () => void; say: Toast; user: CloudUser | null; setUser: (user: CloudUser | null) => void; loadCloud: () => Promise<void> }) {
-  const [mode, setMode] = useState<'login' | 'register'>('register'); const [email, setEmail] = useState(''); const [name, setName] = useState(user?.name || ''); const [password, setPassword] = useState(''); const [busy, setBusy] = useState(false); const [exporting, setExporting] = useState(false);
+  const [mode, setMode] = useState<'login' | 'register'>('register'); const [email, setEmail] = useState(''); const [name, setName] = useState(user?.name || ''); const [password, setPassword] = useState(''); const [busy, setBusy] = useState(false); const [exporting, setExporting] = useState(false); const [backingUp, setBackingUp] = useState(false); const [restoring, setRestoring] = useState(false);
   const migrate = async () => { const local = repo.load(); const idMap = new Map<string, string>(); for (const recipe of local.recipes.filter(item => item.source === 'personal')) { let next = { ...recipe }; if (next.image?.startsWith('data:')) { try { next.image = (await cloud.uploadImage(await dataUrlFile(next.image, 'recipe.jpg'))).path; } catch { next.image = undefined; } } const saved = await cloud.createRecipe(next); idMap.set(recipe.id, saved.recipe.id); } for (const oldId of local.favorites) { const newId = idMap.get(oldId); if (newId) await cloud.toggleFavorite(newId); } for (const [oldId, note] of Object.entries(local.notes)) { const newId = idMap.get(oldId); if (newId && note) await cloud.saveNote(newId, note); } };
   const submit = async () => { if (!email || password.length < 10 || (mode === 'register' && name.trim().length < 2)) { say(mode === 'register' ? 'Укажите имя, email и пароль не короче 10 символов' : 'Укажите email и пароль не короче 10 символов'); return; } setBusy(true); try { const nextUser = mode === 'register' ? await cloud.register(email, password, name.trim()) : await cloud.login(email, password); setUser(nextUser); try { if (mode === 'register' && state.recipes.some(recipe => recipe.source === 'personal')) await migrate(); await loadCloud(); say('Личная книга сохранена в облаке'); } catch { say('Вход выполнен. Часть данных не удалось перенести — попробуйте обновить страницу.'); } } catch (error) { say(error instanceof Error ? error.message : 'Не удалось войти'); } finally { setBusy(false); } };
   const logout = async () => { await cloud.logout(); setUser(null); refresh(); say('Вы вышли из личной книги'); };
   const saveName = async () => { if (name.trim().length < 2) { say('Введите имя'); return; } setBusy(true); try { setUser(await cloud.updateProfile(name.trim())); say('Имя сохранено'); } catch { say('Не удалось сохранить имя'); } finally { setBusy(false); } };
   const exportBook = async () => { setExporting(true); try { await exportRecipeBook(state.recipes, user?.name); say('PDF-книга подготовлена и скачивается'); } catch (error) { say(error instanceof Error ? error.message : 'Не удалось подготовить PDF'); } finally { setExporting(false); } };
+  const downloadBackup = async () => { setBackingUp(true); try { await downloadBookBackup(state, cloud.imageUrl); say('Резервная копия скачивается'); } catch { say('Не удалось подготовить резервную копию'); } finally { setBackingUp(false); } };
+  const restoreBook = async (file?: File) => {
+    if (!file) return;
+    setRestoring(true);
+    try {
+      const backup = parseBookBackup(await file.text());
+      const current = repo.load();
+      const currentIds = new Set(current.recipes.map(recipe => recipe.id));
+      const recipes = backup.recipes.filter(recipe => !currentIds.has(recipe.id));
+      const favorites = [...new Set([...current.favorites, ...backup.favorites])];
+      const notes = { ...backup.notes, ...current.notes };
+      if (!recipes.length && backup.favorites.every(id => current.favorites.includes(id)) && Object.keys(backup.notes).every(id => current.notes[id] !== undefined)) { say('Эта копия уже восстановлена в вашей книге'); return; }
+      if (!confirm(`Восстановить ${recipes.length ? recipes.length + ' рецептов' : 'избранное и заметки'}? Текущие рецепты не будут удалены или изменены.`)) return;
+      repo.replaceCloud({ recipes: [...current.recipes, ...recipes], favorites, notes });
+      refresh();
+      const queue = async (type: 'recipe.create' | 'favorite.set' | 'note.save', payload: unknown) => repo.queue({ type, payload });
+      for (const recipe of recipes) {
+        if (!navigator.onLine) { await queue('recipe.create', recipe); continue; }
+        try {
+          const saved = recipe.image?.startsWith('data:') ? { ...recipe, image: (await cloud.uploadImage(await dataUrlFile(recipe.image, 'recipe.jpg'))).path } : recipe;
+          await cloud.createRecipe(saved);
+        } catch (error) { if (!(error instanceof CloudError && error.status === 409)) await queue('recipe.create', recipe); }
+      }
+      for (const recipeId of backup.favorites.filter(id => !current.favorites.includes(id))) {
+        if (!navigator.onLine) await queue('favorite.set', { recipeId, isFavorite: true });
+        else try { await cloud.setFavorite(recipeId, true); } catch { await queue('favorite.set', { recipeId, isFavorite: true }); }
+      }
+      for (const [recipeId, note] of Object.entries(backup.notes).filter(([id]) => current.notes[id] === undefined)) {
+        if (!navigator.onLine) await queue('note.save', { recipeId, note });
+        else try { await cloud.saveNote(recipeId, note); } catch { await queue('note.save', { recipeId, note }); }
+      }
+      if (navigator.onLine) { try { await loadCloud(); } catch { /* local copy and queue remain safe */ } }
+      say(navigator.onLine ? 'Книга восстановлена' : 'Книга восстановлена на устройстве и будет синхронизирована при подключении');
+    } catch (error) { say(error instanceof Error ? error.message : 'Не удалось восстановить книгу'); } finally { setRestoring(false); }
+  };
   const hello = new Date().getHours() < 12 ? 'Доброе утро' : new Date().getHours() < 18 ? 'Добрый день' : 'Добрый вечер';
-  if (user) return <Layout title="Профиль"><div className="profile panel"><div className="avatar">{(user.name || user.email).slice(0, 1).toUpperCase()}</div><h2>{hello}{user.name ? `, ${user.name}` : ''}</h2><p>{user.isAdmin ? 'Администратор общей книги' : 'Личная книга рецептов'}</p><Field label="Ваше имя"><input value={name} onChange={event => setName(event.target.value)} placeholder="Например, Елена" /></Field><button className="secondary" disabled={busy} onClick={() => void saveName()}>Сохранить имя</button><button className="primary pdf-export" disabled={exporting || !state.recipes.length} onClick={() => void exportBook()}>{exporting ? "Готовим PDF…" : "Выгрузить книгу рецептов в PDF"}</button><p className="pdf-export-hint">В книгу войдут рецепты, доступные в вашей учётной записи, с разделением по категориям.</p><p className="eyebrow">{user.email}<br />Рецепты, фото, избранное и заметки сохраняются в защищённой личной книге.</p><button className="secondary" onClick={() => void logout()}>Выйти</button></div></Layout>;
+  if (user) return <Layout title="Профиль"><div className="profile panel"><div className="avatar">{(user.name || user.email).slice(0, 1).toUpperCase()}</div><h2>{hello}{user.name ? `, ${user.name}` : ''}</h2><p>{user.isAdmin ? 'Администратор общей книги' : 'Личная книга рецептов'}</p><Field label="Ваше имя"><input value={name} onChange={event => setName(event.target.value)} placeholder="Например, Елена" /></Field><button className="secondary" disabled={busy} onClick={() => void saveName()}>Сохранить имя</button><section className="backup-tools"><h3>Резервная копия</h3><button className="secondary" disabled={backingUp} onClick={() => void downloadBackup()}>{backingUp ? 'Готовим копию…' : 'Скачать копию моей книги'}</button><label className="secondary backup-restore">{restoring ? 'Восстанавливаем…' : 'Восстановить из копии'}<input hidden type="file" accept="application/json,.json" disabled={restoring} onChange={event => { void restoreBook(event.target.files?.[0]); event.currentTarget.value = ''; }} /></label><p className="pdf-export-hint">Копия содержит ваши личные рецепты, фото, избранное и заметки. При восстановлении текущая книга не удаляется.</p></section><button className="primary pdf-export" disabled={exporting || !state.recipes.length} onClick={() => void exportBook()}>{exporting ? "Готовим PDF…" : "Выгрузить книгу рецептов в PDF"}</button><p className="pdf-export-hint">В книгу войдут рецепты, доступные в вашей учётной записи, с разделением по категориям.</p><p className="eyebrow">{user.email}<br />Рецепты, фото, избранное и заметки сохраняются в защищённой личной книге.</p><button className="secondary" onClick={() => void logout()}>Выйти</button></div></Layout>;
   return <Layout title="Профиль"><div className="profile panel"><div className="avatar">♡</div><h2>Сохраните свои рецепты</h2><p>Вход нужен, чтобы личная книга, фотографии, избранное и заметки были доступны на другом телефоне.</p><div className="auth-tabs"><button className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>Создать книгу</button><button className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Войти</button></div>{mode === 'register' && <Field label="Ваше имя"><input value={name} onChange={event => setName(event.target.value)} placeholder="Например, Елена" /></Field>}<Field label="Email"><input type="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="you@example.com" /></Field><Field label="Пароль"><input type="password" value={password} onChange={event => setPassword(event.target.value)} placeholder="Минимум 10 символов" /></Field><button className="primary" disabled={busy} onClick={() => void submit()}>{busy ? 'Сохраняем…' : mode === 'register' ? 'Создать личную книгу' : 'Войти'}</button>{mode === 'login' && <Link className="auth-link" to="/reset-password">Забыли пароль?</Link>}<p className="eyebrow">До входа новые рецепты остаются только в этом браузере.</p></div></Layout>;
 }
 function ResetPassword({ say }: { say: Toast }) {
