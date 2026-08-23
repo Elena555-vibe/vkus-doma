@@ -42,3 +42,6 @@ img,svg,video,canvas{max-width:100%}
   .row{grid-template-columns:1fr;gap:0}
   .catalog-add{width:calc(100% - 24px)}
 }
+
+/* Новая PWA-версия применяется только по явному действию пользователя. */
+.update-notice{position:fixed;z-index:11;right:16px;bottom:94px;left:16px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;padding:11px 13px;border:1px solid #8c70a0;border-radius:17px;background:var(--surface);box-shadow:0 8px 22px rgba(91,72,88,.18);color:var(--plum);font-size:12px;text-align:center}.update-notice button{min-height:34px;padding:6px 11px;border:0;border-radius:11px;background:var(--lavender);color:#fff;font-weight:600}.update-notice .update-later{background:transparent;color:var(--plum);text-decoration:underline}

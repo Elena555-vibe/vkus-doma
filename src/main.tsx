@@ -1,6 +1,7 @@
 import { StrictMode, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HashRouter, Link, NavLink, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { registerSW } from 'virtual:pwa-register';
 import { Archive, BookOpen, CookingPot, Croissant, GlassWater, House, IceCreamBowl, PackageOpen, Salad, Sandwich, Soup, UserRound, Utensils } from 'lucide-react';
 import './styles/global.css';
 import { categories, units, type Category, type Recipe } from './data/types';
@@ -51,6 +52,8 @@ function App() {
   const [user, setUser] = useState<CloudUser | null>(null);
   const [cloudLoading, setCloudLoading] = useState(true);
   const [toast, setToast] = useState('');
+  const [updateReady, setUpdateReady] = useState(false);
+  const [applyUpdate, setApplyUpdate] = useState<(() => Promise<void>) | null>(null);
   const refresh = () => setState(repo.load());
   const say: Toast = message => { setToast(message); window.setTimeout(() => setToast(''), 2600); };
   const loadCloud = async () => {
@@ -70,6 +73,10 @@ function App() {
     finally { setCloudLoading(false); }
   })(); }, []);
   useEffect(() => { const sync = () => { void (async () => { try { const result = await syncPendingChanges(); if (result.synced) await loadCloud(); } catch { /* очередь спокойно ждёт следующего подключения */ } })(); }; addEventListener('online', sync); return () => removeEventListener('online', sync); }, []);
+  useEffect(() => {
+    const updateSW = registerSW({ onNeedRefresh: () => setUpdateReady(true) });
+    setApplyUpdate(() => () => updateSW(true));
+  }, []);
   return <><Routes>
     <Route path="/" element={<Home user={user} />} />
     <Route path="/recipes" element={<Catalog state={state} />} />
@@ -79,7 +86,7 @@ function App() {
     <Route path="/profile" element={<Profile state={state} refresh={refresh} say={say} user={user} setUser={setUser} loadCloud={loadCloud} />} />
     <Route path="/reset-password" element={<ResetPassword say={say} />} />
     <Route path="*" element={<NotFound />} />
-  </Routes><BottomNav />{toast && <div className="toast" role="status">{toast}</div>}</>;
+  </Routes><BottomNav />{updateReady && <div className="update-notice" role="status"><span>Доступна новая версия приложения.</span><button onClick={() => void applyUpdate?.()}>Обновить</button><button className="update-later" onClick={() => setUpdateReady(false)}>Позже</button></div>}{toast && <div className="toast" role="status">{toast}</div>}</>;
 }
 
 const appAsset = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\//, '')}`;

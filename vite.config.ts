@@ -3,7 +3,9 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({ mode }) => {
-  const appBase = loadEnv(mode, process.cwd(), '').VITE_APP_BASE || '/vkus-doma/';
+  // Рабочий домен обслуживает приложение из корня. Для GitHub Pages
+  // base передаётся явно через VITE_APP_BASE в workflow.
+  const appBase = loadEnv(mode, process.cwd(), '').VITE_APP_BASE || '/';
   const normalizedBase = appBase.endsWith('/') ? appBase : `${appBase}/`;
 
   return {
@@ -11,7 +13,10 @@ export default defineConfig(({ mode }) => {
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // Не перезагружаем приложение сами: во время заполнения рецепта это
+      // могло бы выглядеть как потеря данных. Пользователь видит понятную
+      // кнопку обновления и решает, когда применить новую версию.
+      registerType: 'prompt',
       includeAssets: [
         'icons/vkus-doma-logo-centered-v5.png',
         'icons/vkus-doma-logo-transparent-v2.png',
@@ -29,7 +34,7 @@ export default defineConfig(({ mode }) => {
         theme_color: '#FAF7F1',
         icons: [{ src: 'icons/vkus-doma-logo-centered-v5.png', sizes: '1254x1254', type: 'image/png', purpose: 'any maskable' }],
       },
-      workbox: { navigateFallback: `${normalizedBase}index.html`, globPatterns: ['**/*.{js,css,html,svg}'], globIgnores: ['assets/pdfmake-*.js', 'assets/vfs_fonts-*.js'], maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, skipWaiting: true, clientsClaim: true, cleanupOutdatedCaches: true },
+      workbox: { navigateFallback: `${normalizedBase}index.html`, globPatterns: ['**/*.{js,css,html,svg}'], globIgnores: ['assets/pdfmake-*.js', 'assets/vfs_fonts-*.js'], maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, clientsClaim: true, cleanupOutdatedCaches: true },
     }),
   ],
   };

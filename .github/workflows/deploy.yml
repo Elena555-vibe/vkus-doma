@@ -17,6 +17,8 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+        env:
+          VITE_APP_BASE: /vkus-doma/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
