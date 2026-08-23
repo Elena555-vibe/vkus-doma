@@ -32,9 +32,6 @@ importers:
       vite:
         specifier: latest
         version: 8.2.2(terser@5.50.0)
-      workbox-window:
-        specifier: ^7.4.1
-        version: 7.4.1
     devDependencies:
       '@types/react':
         specifier: ^19.2.18

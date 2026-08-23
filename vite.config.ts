@@ -17,6 +17,7 @@ export default defineConfig(({ mode }) => {
       // могло бы выглядеть как потеря данных. Пользователь видит понятную
       // кнопку обновления и решает, когда применить новую версию.
       registerType: 'prompt',
+      injectRegister: false,
       includeAssets: [
         'icons/vkus-doma-logo-centered-v5.png',
         'icons/vkus-doma-logo-transparent-v2.png',

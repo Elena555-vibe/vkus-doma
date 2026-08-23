@@ -1,7 +1,6 @@
 import { StrictMode, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HashRouter, Link, NavLink, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { registerSW } from 'virtual:pwa-register';
 import { Archive, BookOpen, CookingPot, Croissant, GlassWater, House, IceCreamBowl, PackageOpen, Salad, Sandwich, Soup, UserRound, Utensils } from 'lucide-react';
 import './styles/global.css';
 import { categories, units, type Category, type Recipe } from './data/types';
@@ -74,8 +73,34 @@ function App() {
   })(); }, []);
   useEffect(() => { const sync = () => { void (async () => { try { const result = await syncPendingChanges(); if (result.synced) await loadCloud(); } catch { /* очередь спокойно ждёт следующего подключения */ } })(); }; addEventListener('online', sync); return () => removeEventListener('online', sync); }, []);
   useEffect(() => {
-    const updateSW = registerSW({ onNeedRefresh: () => setUpdateReady(true) });
-    setApplyUpdate(() => () => updateSW(true));
+    if (!('serviceWorker' in navigator)) return;
+    let disposed = false;
+    let registration: ServiceWorkerRegistration | undefined;
+    const announce = () => {
+      if (disposed || !registration?.waiting || !navigator.serviceWorker.controller) return;
+      setApplyUpdate(() => async () => {
+        const waiting = registration?.waiting;
+        if (!waiting) return;
+        const changed = new Promise<void>(resolve => navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), { once: true }));
+        waiting.postMessage({ type: 'SKIP_WAITING' });
+        await changed;
+        window.location.reload();
+      });
+      setUpdateReady(true);
+    };
+    const register = async () => {
+      registration = await navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL, updateViaCache: 'none' });
+      registration.addEventListener('updatefound', () => {
+        const worker = registration?.installing;
+        worker?.addEventListener('statechange', () => { if (worker.state === 'installed') announce(); });
+      });
+      announce();
+      await registration.update();
+    };
+    void register().catch(() => undefined);
+    const check = () => { if (document.visibilityState === 'visible') void registration?.update(); };
+    addEventListener('visibilitychange', check);
+    return () => { disposed = true; removeEventListener('visibilitychange', check); };
   }, []);
   return <><Routes>
     <Route path="/" element={<Home user={user} />} />
